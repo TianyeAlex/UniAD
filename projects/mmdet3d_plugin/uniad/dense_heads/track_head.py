@@ -399,7 +399,7 @@ class BEVFormerTrackHead(DETRHead):
         # Compute the average number of gt boxes accross all gpus, for
         # normalization purposes
         num_total_pos = loss_cls.new_tensor([num_total_pos])
-        num_total_pos = torch.clamp(reduce_mean(num_total_pos), min=1).item()
+        num_total_pos = torch.clamp(reduce_mean(num_total_pos), min=1)  # 保持tensor，避免GPU同步
 
         # regression L1 loss
         bbox_preds = bbox_preds.reshape(-1, bbox_preds.size(-1))

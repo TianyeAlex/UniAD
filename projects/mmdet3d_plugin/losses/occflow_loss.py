@@ -44,7 +44,7 @@ class FieryBinarySegmentationLoss(nn.Module):
         # Filter out losses of invalid future sample
         if frame_mask is not None:
             assert frame_mask.size(0) == s, f"{frame_mask.size()}"
-            if frame_mask.sum().item() == 0:
+            if not frame_mask.any():  # 使用.any()替代.sum().item()==0，避免GPU同步
                 return prediction.sum() * 0.
             frame_mask = frame_mask.view(1, s, 1, 1)
             loss = loss * frame_mask.float()
@@ -111,7 +111,7 @@ def dice_loss(pred,
     # Ignore invalid frame
     if frame_mask is not None:
         assert frame_mask.size(0) == s, f"{frame_mask.size()}"
-        if frame_mask.sum().item() == 0:
+        if not frame_mask.any():  # 使用.any()替代.sum().item()==0，避免GPU同步
             return pred.sum() * 0.
         frame_mask = frame_mask.view(1, s, 1, 1)
         target = target * frame_mask.float()

@@ -159,8 +159,8 @@ class ClipMatcher(nn.Module):
                                     device=self.sample_device)
         if is_dist_avail_and_initialized():
             torch.distributed.all_reduce(num_boxes)
-        num_boxes = torch.clamp(num_boxes / get_world_size(), min=1).item()
-        return num_boxes
+        num_boxes = torch.clamp(num_boxes / get_world_size(), min=1)
+        return num_boxes  # 返回tensor而非标量，避免GPU同步
 
     @torch.no_grad()
     def loss_cardinality(self, outputs, targets, indices):
@@ -271,7 +271,7 @@ class ClipMatcher(nn.Module):
         )
         # [num_matched]
 
-        target_obj_ids = torch.cat([target_obj_ids, torch.zeros(1).to(target_obj_ids.device)], dim=0)
+        target_obj_ids = torch.cat([target_obj_ids, torch.zeros(1, device=target_obj_ids.device)], dim=0)
         mask = target_obj_ids != -1
         bbox_weights = torch.ones_like(target_boxes) * self.code_weights
         avg_factor = src_boxes[mask].size(0)
@@ -280,7 +280,7 @@ class ClipMatcher(nn.Module):
             src_boxes[mask],
             target_boxes[mask],
             bbox_weights[mask],
-            avg_factor=avg_factor.item(),
+            avg_factor=avg_factor,  # 直接传递tensor，避免GPU同步
         )
         
         losses = {}
@@ -385,20 +385,24 @@ class ClipMatcher(nn.Module):
             "pred_past_trajs": pred_past_trajs_i.unsqueeze(0),
         }
         # step1. inherit and update the previous tracks.
+        # 优化：一次性转换到CPU，避免循环中的重复GPU同步
+        obj_idxes_cpu = track_instances.obj_idxes.cpu().numpy()
+        matched_gt_idxes = track_instances.matched_gt_idxes.clone()
+        
         num_disappear_track = 0
-        for j in range(len(track_instances)):
-            obj_id = track_instances.obj_idxes[j].item()
+        for j, obj_id in enumerate(obj_idxes_cpu):
             # set new target idx.
             if obj_id >= 0:
                 if obj_id in obj_idx_to_gt_idx:
-                    track_instances.matched_gt_idxes[j] = obj_idx_to_gt_idx[
-                        obj_id]
+                    matched_gt_idxes[j] = obj_idx_to_gt_idx[obj_id]
                 else:
                     num_disappear_track += 1
-                    track_instances.matched_gt_idxes[
-                        j] = -1  # track-disappear case.
+                    matched_gt_idxes[j] = -1  # track-disappear case.
             else:
-                track_instances.matched_gt_idxes[j] = -1
+                matched_gt_idxes[j] = -1
+        
+        # 一次性写回GPU
+        track_instances.matched_gt_idxes = matched_gt_idxes
 
         full_track_idxes = torch.arange(
             len(track_instances), dtype=torch.long).to(pred_logits_i.device)
@@ -421,7 +425,7 @@ class ClipMatcher(nn.Module):
         tgt_indexes = track_instances.matched_gt_idxes
         tgt_indexes = tgt_indexes[tgt_indexes != -1]
 
-        tgt_state = torch.zeros(len(gt_instances_i)).to(pred_logits_i.device)
+        tgt_state = torch.zeros(len(gt_instances_i), device=pred_logits_i.device)
         tgt_state[tgt_indexes] = 1
         # new tgt indexes
         untracked_tgt_indexes = torch.arange(len(gt_instances_i)).to(
@@ -579,20 +583,24 @@ class ClipMatcher(nn.Module):
                 for gt_idx, obj_idx in enumerate(obj_idxes_list)
             }
 
+            # 优化：批量处理，避免循环中重复GPU同步
+            obj_idxes_cpu = track_instances.obj_idxes.cpu().numpy()
+            matched_gt_idxes = track_instances.matched_gt_idxes.clone()
+            
             num_paired = 0
-            for j in range(len(track_instances)):
-                obj_id = track_instances.obj_idxes[j].item()
+            for j, obj_id in enumerate(obj_idxes_cpu):
                 # set new target idx.
                 if obj_id >= 0:
                     if obj_id in obj_idx_to_gt_idx:
-                        track_instances.matched_gt_idxes[
-                            j] = obj_idx_to_gt_idx[obj_id]
+                        matched_gt_idxes[j] = obj_idx_to_gt_idx[obj_id]
                         num_paired += 1
                     else:
-                        track_instances.matched_gt_idxes[
-                            j] = -1  # track-disappear case.
+                        matched_gt_idxes[j] = -1  # track-disappear case.
                 else:
-                    track_instances.matched_gt_idxes[j] = -1
+                    matched_gt_idxes[j] = -1
+            
+            # 写回GPU
+            track_instances.matched_gt_idxes = matched_gt_idxes
 
             if num_paired > 0:
                 if_paired_i = track_instances.matched_gt_idxes >= 0

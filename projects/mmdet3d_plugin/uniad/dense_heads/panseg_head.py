@@ -632,7 +632,7 @@ class PansegformerHead(SegDETRHead):
 
         num_total_pos_thing = loss_cls.new_tensor([num_total_pos_thing])
         num_total_pos_thing = torch.clamp(reduce_mean(num_total_pos_thing),
-                                          min=1).item()
+                                          min=1)  # 保持tensor，避免GPU同步
 
         # construct factors used for rescale bboxes
         factors = []
@@ -887,7 +887,7 @@ class PansegformerHead(SegDETRHead):
 
         num_total_pos_stuff = loss_cls.new_tensor([num_total_pos_stuff])
         num_total_pos_stuff = torch.clamp(reduce_mean(num_total_pos_stuff),
-                                          min=1).item()
+                                          min=1)  # 保持tensor，避免GPU同步
         if mask_preds_things.shape[0] == 0:
             loss_mask_things = (0 * mask_preds_things).sum()
         else:
@@ -1255,10 +1255,10 @@ class PansegformerHead(SegDETRHead):
             stuff_score_list.append(scores_st)
 
             results = torch.zeros((2, *mask_pred.shape[-2:]),
-                                  device=mask_pred.device).to(torch.long)
+                                  device=mask_pred.device, dtype=torch.long)
             id_unique = 1
-            lane = torch.zeros((self.num_things_classes, *mask_pred.shape[-2:]), device=mask_pred.device).to(torch.long)
-            lane_score =  torch.zeros((self.num_things_classes, *mask_pred.shape[-2:]), device=mask_pred.device).to(mask_pred.dtype)
+            lane = torch.zeros((self.num_things_classes, *mask_pred.shape[-2:]), device=mask_pred.device, dtype=torch.long)
+            lane_score =  torch.zeros((self.num_things_classes, *mask_pred.shape[-2:]), device=mask_pred.device, dtype=mask_pred.dtype)
             for i, scores in enumerate(scores_all):
                 # MDS: things and sutff have different threholds may perform a little bit better
                 if labels_all[i] < self.num_things_classes and scores < self.quality_threshold_things:

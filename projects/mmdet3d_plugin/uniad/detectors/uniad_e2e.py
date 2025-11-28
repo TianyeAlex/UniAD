@@ -200,9 +200,10 @@ class UniAD(UniADTrack):
         if self.with_occ_head:
             if outs_motion['track_query'].shape[1] == 0:
                 # TODO: rm hard code
-                outs_motion['track_query'] = torch.zeros((1, 1, 256)).to(bev_embed)
-                outs_motion['track_query_pos'] = torch.zeros((1,1, 256)).to(bev_embed)
-                outs_motion['traj_query'] = torch.zeros((3, 1, 1, 6, 256)).to(bev_embed)
+                device, dtype = bev_embed.device, bev_embed.dtype
+                outs_motion['track_query'] = torch.zeros((1, 1, 256), device=device, dtype=dtype)
+                outs_motion['track_query_pos'] = torch.zeros((1,1, 256), device=device, dtype=dtype)
+                outs_motion['traj_query'] = torch.zeros((3, 1, 1, 6, 256), device=device, dtype=dtype)
                 outs_motion['all_matched_idxes'] = [[-1]]
             losses_occ = self.occ_head.forward_train(
                             bev_embed,

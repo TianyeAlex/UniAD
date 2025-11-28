@@ -657,9 +657,9 @@ class NuScenesE2EDataset(NuScenesDataset):
                 e2g_r_mat = torch.from_numpy(Quaternion(e2g_r).rotation_matrix)
 
                 l2e_r_mats.append(l2e_r_mat.to(data_type))
-                l2e_t_vecs.append(torch.tensor(l2e_t).to(data_type))
+                l2e_t_vecs.append(torch.tensor(l2e_t, dtype=data_type))
                 e2g_r_mats.append(e2g_r_mat.to(data_type))
-                e2g_t_vecs.append(torch.tensor(e2g_t).to(data_type))
+                e2g_t_vecs.append(torch.tensor(e2g_t, dtype=data_type))
 
         res = {
             'occ_l2e_r_mats': l2e_r_mats,

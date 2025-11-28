@@ -454,7 +454,7 @@ class OccHead(BaseModule):
 
     def get_ins_seg_gt(self, gt_instance):
         ins_gt_old = gt_instance  # Not consecutive, 0 for bg, otherwise ins_ind(start from 1)
-        ins_gt_new = torch.zeros_like(ins_gt_old).to(ins_gt_old)  # Make it consecutive
+        ins_gt_new = torch.zeros_like(ins_gt_old)  # Make it consecutive
         ins_inds_unique = torch.unique(ins_gt_old)
         new_id = 1
         for uni_id in ins_inds_unique:
