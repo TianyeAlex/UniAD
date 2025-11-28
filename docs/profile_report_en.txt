@@ -1,0 +1,333 @@
+========================================================================================================================
+UniAD Training Performance Deep Analysis (Steady-State Performance)
+========================================================================================================================
+
+Loading trace file:
+  projects/work_dirs/stage1_track_map/base_track_map/profiler_logs/plugins/profile/2025_11_17_17_11_23/2ee3a4ed0b1d_4151.1763370845493380732.pt.trace.json
+  File size: 997.7 MB
+✓ Loaded successfully! Total events: 4,558,985
+
+Analyzing events...
+  Progress: 0/4,558,985 (0%)
+  Progress: 227,949/4,558,985 (5%)
+  Progress: 455,898/4,558,985 (10%)
+  Progress: 683,847/4,558,985 (15%)
+  Progress: 911,796/4,558,985 (20%)
+  Progress: 1,139,745/4,558,985 (25%)
+  Progress: 1,367,694/4,558,985 (30%)
+  Progress: 1,595,643/4,558,985 (35%)
+  Progress: 1,823,592/4,558,985 (40%)
+  Progress: 2,051,541/4,558,985 (45%)
+  Progress: 2,279,490/4,558,985 (50%)
+  Progress: 2,507,439/4,558,985 (55%)
+  Progress: 2,735,388/4,558,985 (60%)
+  Progress: 2,963,337/4,558,985 (65%)
+  Progress: 3,191,286/4,558,985 (70%)
+  Progress: 3,419,235/4,558,985 (75%)
+  Progress: 3,647,184/4,558,985 (80%)
+  Progress: 3,875,133/4,558,985 (85%)
+  Progress: 4,103,082/4,558,985 (90%)
+  Progress: 4,331,031/4,558,985 (95%)
+  Progress: 4,558,980/4,558,985 (100%)
+
+✓ Analysis complete!
+
+========================================================================================================================
+【Key Metrics】Training Time Comparison
+========================================================================================================================
+
+From training logs: Each iteration takes approximately 3.6 seconds
+Profiler config: wait=10, warmup=1, active=3, repeat=1
+Therefore captured: 12th, 13th, 14th iterations (total 3 iterations)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^
+                    Skipped first 10 iterations to avoid cold-start, data closer to steady-state
+
+Expected wall-clock time: 3 × 3.6s = 10.8 seconds
+
+Profiler Statistics Analysis:
+┌────────────────────────────────────────────────────────────┐
+│ Type              │  Total(s)    │  Avg/Iter   │  Notes     │
+├────────────────────────────────────────────────────────────┤
+│ CPU Ops Cumulative│       24.22  │       8.07  │  All CPU ops│
+│ GPU Kernel Time   │        6.43  │       2.14  │  GPU compute│
+│ CUDA API Overhead │        5.76  │       1.92  │  Sync/API  │
+│ Timeline Span     │       13.19  │       4.40  │  Estimated │
+└────────────────────────────────────────────────────────────┘
+
+Key Findings:
+• CPU cumulative time (24.2s) >> Actual iteration time (3.6s)
+  → Indicates significant CPU-GPU parallelism
+  
+• Parallel Efficiency = 1 - (Actual / CPU Time)
+                      = 1 - (3.6 / 8.07)
+                      ≈ 55.4%
+  → CPU-GPU pipeline already has good overlap
+
+• GPU actual compute time: 2.14s/iteration
+  → GPU utilization = 59.5% (based on 3.6s wall-clock)
+  → Still room for optimization, ideal case ~2-2.5s/iteration
+
+
+========================================================================================================================
+【1】Training Stage Time Distribution
+========================================================================================================================
+
+Stage                      Total Time(ms)       Avg/Iter(ms)    Percent     Cumul.
+------------------------------------------------------------------------------------------------------------------------
+Forward Pass                     11875.77            3958.59      41.7%      41.7%
+Memory Operations                 7755.48            2585.16      27.2%      69.0%
+Backward Pass                     4569.98            1523.33      16.1%      85.0%
+Synchronization                   4243.42            1414.47      14.9%      99.9%
+Loss Computation                    16.47               5.49       0.1%     100.0%
+Other                                6.67               2.22       0.0%     100.0%
+Optimizer Step                       0.00               0.00       0.0%     100.0%
+Data Loading                         0.00               0.00       0.0%     100.0%
+------------------------------------------------------------------------------------------------------------------------
+Total                            28467.79            9489.26     100.0%
+
+========================================================================================================================
+【2】Most Time-Consuming CPU Operations (TOP 30)
+========================================================================================================================
+
+Operation Name                                                    Call Count     Total(ms)     Avg(μs)      Pct
+------------------------------------------------------------------------------------------------------------------------
+ 1. aten::copy_                                                       120,527       3311.10        27.5    13.7%
+ 2. aten::to                                                           23,134       2140.87        92.5     8.8%
+ 3. aten::_to_copy                                                      6,284       2132.45       339.3     8.8%
+ 4. aten::item                                                         95,355       1061.99        11.1     4.4%
+ 5. aten::_local_scalar_dense                                          95,355       1003.98        10.5     4.1%
+ 6. ModulatedDeformConv2dFunction                                         780        862.60      1105.9     3.6%
+ 7. aten::nonzero                                                       5,512        841.12       152.6     3.5%
+ 8. autograd::engine::evaluate_function: IndexBackward0                 1,544        804.94       521.3     3.3%
+ 9. aten::_index_put_impl_                                              4,619        803.27       173.9     3.3%
+10. IndexBackward0                                                      1,544        793.91       514.2     3.3%
+11. aten::select                                                      299,680        437.88         1.5     1.8%
+12. autograd::engine::evaluate_function: AddmmBackward0                 3,504        354.89       101.3     1.5%
+13. aten::index                                                        11,964        354.29        29.6     1.5%
+14. aten::addmm_                                                        7,488        333.10        44.5     1.4%
+15. aten::conv2d                                                        3,330        332.06        99.7     1.4%
+16. aten::convolution                                                   3,330        327.62        98.4     1.4%
+17. aten::_convolution                                                  3,330        320.20        96.2     1.3%
+18. aten::linear                                                        6,009        287.69        47.9     1.2%
+19. aten::cudnn_convolution                                             3,330        280.46        84.2     1.2%
+20. AddmmBackward0                                                      3,504        234.62        67.0     1.0%
+21. aten::addmm                                                         5,928        218.10        36.8     0.9%
+22. autograd::engine::evaluate_function: torch::autograd::CopySlic      2,262        217.33        96.1     0.9%
+23. torch::autograd::CopySlices                                         2,262        201.14        88.9     0.8%
+24. aten::mm                                                            7,272        197.21        27.1     0.8%
+25. aten::fill_                                                        20,336        195.49         9.6     0.8%
+26. aten::zero_                                                        15,137        193.93        12.8     0.8%
+27. aten::sum                                                           8,955        189.99        21.2     0.8%
+28. aten::empty                                                        57,050        174.55         3.1     0.7%
+29. autograd::engine::evaluate_function: SelectBackward0                3,462        169.85        49.1     0.7%
+30. aten::mul                                                          15,506        165.04        10.6     0.7%
+
+CPU Total                                                          2,007,483      24224.37
+
+========================================================================================================================
+【3】GPU Kernel Time Ranking (TOP 30)
+========================================================================================================================
+
+Kernel Name                                                       Call Count     Total(ms)     Avg(μs)      Pct
+------------------------------------------------------------------------------------------------------------------------
+ 1. void ms_deformable_col2im_gpu_kernel_shm_blocksize_aware_reduc        306        698.24      2281.8    10.9%
+ 2. void ms_deformable_im2col_gpu_kernel<float>(int, float const*,        702        587.20       836.5     9.1%
+ 3. void modulated_deformable_im2col_gpu_kernel<float>(int, float       7,488        483.89        64.6     7.5%
+ 4. void cudnn::bn_fw_inf_1C11_kernel_NCHW<float, float, true, 1>(      3,120        428.44       137.3     6.7%
+ 5. void at::native::vectorized_elementwise_kernel<4, at::native::     17,170        419.03        24.4     6.5%
+ 6. sm90_xmma_gemm_f32f32_tf32f32_f32_nn_n_tilesize64x128x32_warpg      6,687        343.46        51.4     5.3%
+ 7. void at::native::vectorized_elementwise_kernel<4, at::native::      5,762        287.17        49.8     4.5%
+ 8. sm90_xmma_gemm_f32f32_tf32f32_f32_nn_n_tilesize64x256x32_warpg      1,362        183.97       135.1     2.9%
+ 9. Memcpy DtoD (Device -> Device)                                     20,016        176.45         8.8     2.7%
+10. Memcpy HtoD (Pageable -> Device)                                   84,598        158.64         1.9     2.5%
+11. sm90_xmma_gemm_f32f32_tf32f32_f32_tn_n_tilesize128x128x32_warp      2,568        150.13        58.5     2.3%
+12. void at::native::vectorized_elementwise_kernel<4, at::native::     16,004        137.34         8.6     2.1%
+13. void cutlass::Kernel<cutlass_80_tensorop_s1688gemm_128x256_32x        993        128.84       129.7     2.0%
+14. sm90_xmma_gemm_f32f32_tf32f32_f32_nn_n_tilesize128x128x32_warp      1,116        119.28       106.9     1.9%
+15. void at::native::elementwise_kernel<128, 2, at::native::gpu_ke      5,172        117.24        22.7     1.8%
+16. void at::native::reduce_kernel<128, 4, at::native::ReduceOp<fl      3,361        116.42        34.6     1.8%
+17. Memcpy DtoH (Device -> Pageable)                                   91,705         91.87         1.0     1.4%
+18. void at::native::(anonymous namespace)::vectorized_layer_norm_      1,614         85.41        52.9     1.3%
+19. void at::native::elementwise_kernel<128, 4, at::native::gpu_ke      1,020         82.77        81.1     1.3%
+20. void at::native::index_elementwise_kernel<128, 4, at::native::      9,354         77.67         8.3     1.2%
+21. void cudnn::ops::nchwToNhwcKernel<float, float, float, false,       1,617         68.87        42.6     1.1%
+22. void at::native::(anonymous namespace)::GammaBetaBackwardCUDAK        306         56.48       184.6     0.9%
+23. void cutlass::Kernel<cutlass_80_tensorop_s1688gemm_128x128_32x        732         54.16        74.0     0.8%
+24. sm80_xmma_fprop_implicit_gemm_indexed_wo_smem_tf32f32_tf32f32_         30         53.21      1773.5     0.8%
+25. void cudnn::ops::nchwToNhwcKernel<float, float, float, false,         318         53.01       166.7     0.8%
+26. void cutlass::Kernel<cutlass_80_tensorop_s1688gemm_128x128_32x        123         48.91       397.7     0.8%
+27. void cudnn::ops::nhwcToNchwKernel<float, float, float, true, f      1,245         48.88        39.3     0.8%
+28. void at::native::elementwise_kernel<128, 2, at::native::gpu_ke      6,135         47.82         7.8     0.7%
+29. void at::native::(anonymous namespace)::multi_tensor_apply_ker      6,378         39.48         6.2     0.6%
+30. std::enable_if<true, void>::type internal::gemvx::kernel<int,         720         38.50        53.5     0.6%
+
+GPU Kernel Total                                                     436,971       6430.75
+
+========================================================================================================================
+【4】CUDA API Call Overhead Analysis
+========================================================================================================================
+
+CUDA API                                                          Call Count     Total(ms)     Avg(μs)      Pct
+------------------------------------------------------------------------------------------------------------------------
+ 1. cudaStreamSynchronize                                             176,105       2161.81        12.3    37.5%
+ 2. cudaMemcpyAsync                                                   196,322       1945.67         9.9    33.8%
+ 3. cudaLaunchKernel                                                  212,247       1255.18         5.9    21.8%
+ 4. cudaLaunchKernelExC                                                15,160        220.99        14.6     3.8%
+ 5. cudaMemsetAsync                                                    13,191        135.91        10.3     2.4%
+ 6. cudaFuncGetAttributes                                              14,549         28.25         1.9     0.5%
+ 7. cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags             39,300          4.07         0.1     0.1%
+ 8. cudaEventRecord                                                     9,642          2.80         0.3     0.0%
+ 9. cudaEventQuery                                                      1,672          2.17         1.3     0.0%
+10. cudaFuncSetAttribute                                               51,972          1.28         0.0     0.0%
+11. cudaPeekAtLastError                                                41,854          1.14         0.0     0.0%
+12. cudaStreamWaitEvent                                                 1,524          0.32         0.2     0.0%
+13. cudaDeviceGetAttribute                                             13,486          0.31         0.0     0.0%
+14. cuLaunchKernel                                                         51          0.26         5.1     0.0%
+15. cudaStreamIsCapturing                                               8,265          0.22         0.0     0.0%
+16. cudaStreamGetPriority                                               6,615          0.06         0.0     0.0%
+17. cudaDeviceSynchronize                                                   1          0.04        38.0     0.0%
+18. cudaPointerGetAttributes                                                3          0.01         2.7     0.0%
+19. cudaDeviceGetStreamPriorityRange                                    6,615          0.00         0.0     0.0%
+
+CUDA API Total Overhead                                              808,574       5760.46
+
+⚠️  Synchronization operations: 385,619 calls, total 4243.42 ms (1414.47 ms/iter)
+
+========================================================================================================================
+【5】GPU Kernel Type Distribution
+========================================================================================================================
+
+Category                       #Kernels   Call Count  Total Time(ms)   GPU Time %
+------------------------------------------------------------------------------------------------------------------------
+Deformable Conv/Attn                  3        8,496         1769.32        27.5%
+  └─ void ms_deformable_col2im_gpu_kernel_shm_blocksize_awar     698.24 ms (306 calls)
+  └─ void ms_deformable_im2col_gpu_kernel<float>(int, float      587.20 ms (702 calls)
+  └─ void modulated_deformable_im2col_gpu_kernel<float>(int,     483.89 ms (7,488 calls)
+GEMM/Matrix Multiply                 82       24,842         1565.52        24.3%
+  └─ sm90_xmma_gemm_f32f32_tf32f32_f32_nn_n_tilesize64x128x3     343.46 ms (6,687 calls)
+  └─ sm90_xmma_gemm_f32f32_tf32f32_f32_nn_n_tilesize64x256x3     183.97 ms (1,362 calls)
+  └─ sm90_xmma_gemm_f32f32_tf32f32_f32_tn_n_tilesize128x128x     150.13 ms (2,568 calls)
+Elementwise                         117      110,887         1322.89        20.6%
+  └─ void at::native::vectorized_elementwise_kernel<4, at::n     419.03 ms (17,170 calls)
+  └─ void at::native::vectorized_elementwise_kernel<4, at::n     287.17 ms (5,762 calls)
+  └─ void at::native::vectorized_elementwise_kernel<4, at::n     137.34 ms (16,004 calls)
+Normalization                         5        5,736          531.53         8.3%
+  └─ void cudnn::bn_fw_inf_1C11_kernel_NCHW<float, float, tr     428.44 ms (3,120 calls)
+  └─ void at::native::(anonymous namespace)::vectorized_laye      85.41 ms (1,614 calls)
+  └─ void at::native::(anonymous namespace)::layer_norm_grad      17.12 ms (969 calls)
+Other                                70       50,016          518.24         8.1%
+  └─ void cudnn::ops::nchwToNhwcKernel<float, float, float,       68.87 ms (1,617 calls)
+  └─ void at::native::(anonymous namespace)::GammaBetaBackwa      56.48 ms (306 calls)
+  └─ void cudnn::ops::nchwToNhwcKernel<float, float, float,       53.01 ms (318 calls)
+Memory Ops                           21      213,890          478.39         7.4%
+  └─ Memcpy DtoD (Device -> Device)                              176.45 ms (20,016 calls)
+  └─ Memcpy HtoD (Pageable -> Device)                            158.64 ms (84,598 calls)
+  └─ Memcpy DtoH (Device -> Pageable)                             91.87 ms (91,705 calls)
+Reduction                            37       23,104          244.86         3.8%
+  └─ void at::native::reduce_kernel<128, 4, at::native::Redu     116.42 ms (3,361 calls)
+  └─ void at::native::(anonymous namespace)::max_pool_forwar      29.88 ms (30 calls)
+  └─ void splitKreduce_kernel<32, 16, int, float, float, flo      19.09 ms (4,644 calls)
+Convolution                           0            0            0.00         0.0%
+Attention                             0            0            0.00         0.0%
+
+========================================================================================================================
+【6】Performance Bottleneck Analysis & Optimization Recommendations
+========================================================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ TOP Performance Hotspots                                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 1. Slowest CPU Operation:                                                   │
+│    aten::copy_                                                              │
+│    Time: 3311.10 ms, Calls: 120,527                              │
+│                                                                             │
+│ 2. Slowest GPU Kernel:                                                      │
+│    void ms_deformable_col2im_gpu_kernel_shm_blocksize_aware_reduce_v1<float │
+│    Time: 698.24 ms, Calls: 306                              │
+│                                                                             │
+│ 3. Highest CUDA API Overhead:                                               │
+│    cudaStreamSynchronize                                                    │
+│    Time: 2161.81 ms, Calls: 176,105                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Optimization Strategies (Prioritized):
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔥 P0 - Memory Operations Optimization
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Current: Memory Operations take 2585.16 ms/iteration
+   
+   Recommendations:
+   • Eliminate unnecessary .to() and .copy_() calls in model
+   • Ensure all tensors on correct device before training starts
+   • Use in-place operations (e.g., relu_, add_) to reduce memory allocation
+   • Avoid frequent CPU-GPU data transfers
+   • Remove .cpu() calls in training loop (defer to inference time)
+   
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚡ P0 - GPU Synchronization Optimization
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Current: Synchronization takes 1414.47 ms/iteration
+   
+   Recommendations:
+   • Use torch.cuda.stream() to create multiple CUDA streams
+   • Avoid .item(), .cpu() sync operations in training loop
+   • Use async data transfer: to(device, non_blocking=True)
+   • Reduce unnecessary torch.cuda.synchronize() calls
+   • Batch process items instead of one-by-one synchronization
+   
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 P1 - Deformable Operations Optimization
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Recommendations:
+   • Deformable Conv/Attn uses custom CUDA kernels
+   • Ensure FP16/BF16 mixed precision training is enabled
+   • Consider optimizing CUDA kernel implementation (use TensorCores)
+   • Evaluate if number of deformable layers can be reduced
+   • Check if kernels properly utilize GPU memory hierarchy
+   
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 P1 - Improve GPU Utilization
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Current: GPU compute time 2.14s, wall-clock 3.6s
+            GPU utilization ≈ 59.5%
+   
+   Recommendations:
+   • Increase batch size (if memory allows)
+   • Use gradient accumulation to simulate larger batch
+   • Enable torch.backends.cudnn.benchmark = True
+   • Check for CPU-bound data augmentation operations
+   • Profile data loading to ensure it's not the bottleneck
+   
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💡 P2 - Data Loading Optimization
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Recommendations:
+   • Increase dataloader num_workers
+   • Enable pin_memory=True
+   • Use prefetching: prefetch_factor=2
+   • Consider using NVIDIA DALI or other acceleration libraries
+   • Move data preprocessing to GPU when possible
+
+
+========================================================================================================================
+【Performance Target】
+========================================================================================================================
+
+Current State: 3.6 seconds/iteration (steady-state, iterations 12-14)
+Target:        2.5-3.0 seconds/iteration (20-30% improvement)
+
+Critical Path Optimizations:
+  1. Reduce memory operation overhead:  Save ~1292.58s
+  2. Optimize synchronization:          Save ~707.24s
+  3. Improve GPU utilization:           Save ~0.3-0.5s
+  ────────────────────────────────────────────────────────
+  Expected Total Improvement:           0.6-1.1 s/iteration
+
+Recommended to prioritize TOP 10 CPU operations and TOP 10 GPU kernels!
+
+========================================================================================================================
+✓ Analysis complete!
+  View detailed timeline with Perfetto: https://ui.perfetto.dev
+  Upload file: projects/work_dirs/stage1_track_map/base_track_map/profiler_logs/plugins/profile/2025_11_17_17_11_23/2ee3a4ed0b1d_4151.1763370845493380732.pt.trace.json
+========================================================================================================================

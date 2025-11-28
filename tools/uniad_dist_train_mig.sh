@@ -7,18 +7,11 @@ T=`date +%m%d%H%M`
 CFG=$1                                               #
 GPUS=$2                                              #
 # -------------------------------------------------- #
+export CUDA_VISIBLE_DEVICES=$(nvidia-smi -L | grep 'MIG' | grep -oP '\(UUID: \K[^\)]+' | paste -sd "," -)
+python -c "import torch; print(torch.cuda.device_count())"
+
 GPUS_PER_NODE=$(($GPUS<8?$GPUS:8))
 NNODES=`expr $GPUS / $GPUS_PER_NODE`
-
-export TORCH_CUDA_ARCH_LIST=9.0
-export LD_LIBRARY_PATH=/root/anaconda3/envs/uniad_new/lib/python3.8/site-packages/torch/lib:$LD_LIBRARY_PATH
-export PATH=/root/cuda-12.2/bin/:$PATH
-export LD_LIBRARY_PATH=/root/cuda-12.2/lib64/:$LD_LIBRARY_PATH14
-export CUDA_HOME=/root/cuda-12.2
-source /root/anaconda3/etc/profile.d/conda.sh
-conda activate uniad_new
-export NCCL_IB_GID_INDEX="3"
-sed -i '1s|#!/ssd2/wenshengzhao/anaconda3/envs/uniad_new/bin/python|#!/root/anaconda3/envs/uniad_new/bin/python|' /root/anaconda3/envs/uniad_new/bin/torchrun
 
 MASTER_PORT=${MASTER_PORT:-28596}
 MASTER_ADDR=${MASTER_ADDR:-"127.0.0.1"}  

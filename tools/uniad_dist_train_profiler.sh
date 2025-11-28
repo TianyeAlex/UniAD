@@ -38,8 +38,12 @@ torchrun \
     --master_port=${MASTER_PORT} \
     --nnodes=${NNODES} \
     --node_rank=${RANK} \
-    $(dirname "$0")/train.py \
+    $(dirname "$0")/profiler_train.py \
     $CFG \
+    --profiler-export tensorboard \
+    --profiler-no-shapes \
+    --profiler-no-stack \
+    --profiler-no-flops \
     --launcher pytorch ${@:3} \
     --deterministic \
     --work-dir ${WORK_DIR} \

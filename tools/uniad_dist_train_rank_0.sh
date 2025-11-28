@@ -7,22 +7,18 @@ T=`date +%m%d%H%M`
 CFG=$1                                               #
 GPUS=$2                                              #
 # -------------------------------------------------- #
-GPUS_PER_NODE=$(($GPUS<8?$GPUS:8))
-NNODES=`expr $GPUS / $GPUS_PER_NODE`
 
-export TORCH_CUDA_ARCH_LIST=9.0
-export LD_LIBRARY_PATH=/root/anaconda3/envs/uniad_new/lib/python3.8/site-packages/torch/lib:$LD_LIBRARY_PATH
-export PATH=/root/cuda-12.2/bin/:$PATH
-export LD_LIBRARY_PATH=/root/cuda-12.2/lib64/:$LD_LIBRARY_PATH14
-export CUDA_HOME=/root/cuda-12.2
-source /root/anaconda3/etc/profile.d/conda.sh
-conda activate uniad_new
-export NCCL_IB_GID_INDEX="3"
-sed -i '1s|#!/ssd2/wenshengzhao/anaconda3/envs/uniad_new/bin/python|#!/root/anaconda3/envs/uniad_new/bin/python|' /root/anaconda3/envs/uniad_new/bin/torchrun
+# export CUDA_VISIBLE_DEVICES=MIG-0af3be12-7a61-55c8-8f1e-2ae48cdee736,MIG-aadc580e-3cb7-54aa-b737-e9222c354c6a
+# export CUDA_VISIBLE_DEVICES=MIG-0af3be12-7a61-55c8-8f1e-2ae48cdee736
+export CUDA_VISIBLE_DEVICES=MIG-0af3be12-7a61-55c8-8f1e-2ae48cdee736
+python -c "import torch; print(torch.cuda.device_count())"
+
+GPUS_PER_NODE=$(($GPUS<8?$GPUS:8))
+# NNODES=`expr $GPUS / $GPUS_PER_NODE`
 
 MASTER_PORT=${MASTER_PORT:-28596}
 MASTER_ADDR=${MASTER_ADDR:-"127.0.0.1"}  
-RANK=${RANK:-0}
+# RANK=${RANK:-0}
 
 WORK_DIR=$(echo ${CFG%.*} | sed -e "s/configs/work_dirs/g")/
 # Intermediate files and logs will be saved to UniAD/projects/work_dirs/
@@ -36,8 +32,8 @@ torchrun \
     --nproc_per_node=${GPUS_PER_NODE} \
     --master_addr=${MASTER_ADDR} \
     --master_port=${MASTER_PORT} \
-    --nnodes=${NNODES} \
-    --node_rank=${RANK} \
+    --nnodes=2 \
+    --node_rank=0 \
     $(dirname "$0")/train.py \
     $CFG \
     --launcher pytorch ${@:3} \
