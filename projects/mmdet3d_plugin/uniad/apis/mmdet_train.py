@@ -8,6 +8,7 @@ from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
 from mmcv.runner import (HOOKS, DistSamplerSeedHook, EpochBasedRunner,
                          Fp16OptimizerHook, OptimizerHook, build_optimizer,
                          build_runner, get_dist_info)
+from mmcv.runner.fp16_utils import set_precision
 from mmcv.utils import build_from_cfg
 
 from mmdet.core import EvalHook
@@ -123,9 +124,19 @@ def custom_train_detector(model,
     # an ugly workaround to make .log and .log.json filenames the same
     runner.timestamp = timestamp
 
-    # fp16 setting
+    # fp16/bf16 setting
     fp16_cfg = cfg.get('fp16', None)
-    if fp16_cfg is not None:
+    bf16_cfg = cfg.get('bf16', None)
+    
+    # Set precision type globally in mmcv
+    if bf16_cfg is not None:
+        set_precision(torch.bfloat16)
+        logger.info('Using BFloat16 (BF16) precision training')
+        optimizer_config = Fp16OptimizerHook(
+            **cfg.optimizer_config, **bf16_cfg, distributed=distributed)
+    elif fp16_cfg is not None:
+        set_precision(torch.float16)
+        logger.info('Using Float16 (FP16) precision training')
         optimizer_config = Fp16OptimizerHook(
             **cfg.optimizer_config, **fp16_cfg, distributed=distributed)
     elif distributed and 'type' not in cfg.optimizer_config:
