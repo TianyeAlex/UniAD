@@ -12,6 +12,14 @@ from mmdet.models.utils.builder import TRANSFORMER
 import math
 from mmcv.runner import force_fp32
 
+try:
+    from flash_attn import flash_attn_qkvpacked_func, flash_attn_func
+    FLASH_ATTN_AVAILABLE = True
+except ImportError:
+    FLASH_ATTN_AVAILABLE = False
+    import warnings
+    warnings.warn("FlashAttention not available, using standard attention in seg_mask_head")
+
 count = 0
 
 
@@ -62,9 +70,16 @@ class SelfAttention(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-    @force_fp32(apply_to=('x', ))
     def forward(self, x):
         B, N, C = x.shape
+        
+        input_dtype = x.dtype
+        
+        # Convert weights to match input dtype for FlashAttention
+        if input_dtype in [torch.float16, torch.bfloat16]:
+            if self.qkv.weight.dtype != input_dtype:
+                self.qkv = self.qkv.to(input_dtype)
+                self.proj = self.proj.to(input_dtype)
 
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads,
                                   C // self.num_heads).permute(2, 0, 3, 1,
@@ -72,11 +87,25 @@ class SelfAttention(nn.Module):
         q, k, v = qkv[0], qkv[1], qkv[
             2]  # make torchscript happy (cannot use tensor as tuple)
 
-        attn = (q @ k.transpose(-2, -1)) * self.scale
-
-        attn = attn.softmax(dim=-1)
-        attn = self.attn_drop(attn)
-        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        # Use FlashAttention if available and dtype is fp16/bf16
+        if FLASH_ATTN_AVAILABLE and input_dtype in [torch.float16, torch.bfloat16]:
+            # FlashAttention expects (batch, seqlen, nheads, headdim)
+            # Current shape: q/k/v are (B, num_heads, N, head_dim)
+            q = q.transpose(1, 2).contiguous()  # (B, N, num_heads, head_dim)
+            k = k.transpose(1, 2).contiguous()
+            v = v.transpose(1, 2).contiguous()
+            
+            # Use flash_attn_func
+            x = flash_attn_func(q, k, v, dropout_p=self.attn_drop.p if self.training else 0.0, softmax_scale=self.scale)
+            # Output shape: (B, N, num_heads, head_dim)
+            x = x.reshape(B, N, C)
+        else:
+            # Fallback to standard attention
+            attn = (q @ k.transpose(-2, -1)) * self.scale
+            attn = attn.softmax(dim=-1)
+            attn = self.attn_drop(attn)
+            x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        
         x = self.proj(x)
         x = self.proj_drop(x)
 
@@ -118,10 +147,22 @@ class Attention(nn.Module):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
-    @force_fp32(apply_to=('query', 'key', 'value'))
     def forward(self, query, key, value, key_padding_mask, hw_lvl):
         B, N, C = query.shape
         _, L, _ = key.shape
+        
+        input_dtype = query.dtype
+        
+        # Convert weights to match input dtype for FlashAttention
+        if input_dtype in [torch.float16, torch.bfloat16]:
+            if self.q.weight.dtype != input_dtype:
+                self.q = self.q.to(input_dtype)
+                self.k = self.k.to(input_dtype)
+                self.v = self.v.to(input_dtype)
+                self.proj = self.proj.to(input_dtype)
+                self.linear_l1 = self.linear_l1.to(input_dtype)
+                self.linear = self.linear.to(input_dtype)
+        
         #print('query, key, value', query.shape, value.shape, key.shape)
         q = self.q(query).reshape(B, N,
                                   self.num_heads, C // self.num_heads).permute(
@@ -137,18 +178,28 @@ class Attention(nn.Module):
                                       0, 2, 1,
                                       3).contiguous()  #.permute(2, 0, 3, 1, 4)
 
+        # Compute attention scores for mask prediction (still needed)
         attn = (q @ k.transpose(-2, -1).contiguous()) * self.scale
-
-        attn = attn.permute(0, 2, 3, 1)
-
-        new_feats = self.linear_l1(attn)
+        attn_for_mask = attn.permute(0, 2, 3, 1)
+        new_feats = self.linear_l1(attn_for_mask)
         mask = self.linear(new_feats)
 
-        attn = attn.permute(0, 3, 1, 2)
-        attn = attn.softmax(dim=-1)
-        attn = self.attn_drop(attn)
-
-        x = (attn @ v).transpose(1, 2).contiguous().reshape(B, N, C)
+        # Use FlashAttention for computing attention output if available and dtype is fp16/bf16
+        if FLASH_ATTN_AVAILABLE and input_dtype in [torch.float16, torch.bfloat16]:
+            # FlashAttention expects (batch, seqlen, nheads, headdim)
+            # Current shape: q/k/v are (B, num_heads, N/L, head_dim)
+            q_flash = q.transpose(1, 2).contiguous()  # (B, N, num_heads, head_dim)
+            k_flash = k.transpose(1, 2).contiguous()  # (B, L, num_heads, head_dim)
+            v_flash = v.transpose(1, 2).contiguous()  # (B, L, num_heads, head_dim)
+            
+            x = flash_attn_func(q_flash, k_flash, v_flash, dropout_p=self.attn_drop.p if self.training else 0.0, softmax_scale=self.scale)
+            x = x.reshape(B, N, C)
+        else:
+            # Fallback to standard attention
+            attn = attn.softmax(dim=-1)
+            attn = self.attn_drop(attn)
+            x = (attn @ v).transpose(1, 2).contiguous().reshape(B, N, C)
+        
         x = self.proj(x)
         x = self.proj_drop(x)
 
@@ -188,10 +239,20 @@ class AttentionTail(nn.Module):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
-    @force_fp32(apply_to=('query', 'key'))
     def forward(self, query, key, key_padding_mask, hw_lvl=None):
         B, N, C = query.shape
         _, L, _ = key.shape
+        
+        input_dtype = query.dtype
+        
+        # Convert weights to match input dtype to avoid unnecessary conversions
+        if input_dtype in [torch.float16, torch.bfloat16]:
+            if self.q.weight.dtype != input_dtype:
+                self.q = self.q.to(input_dtype)
+                self.k = self.k.to(input_dtype)
+                self.linear_l1 = self.linear_l1.to(input_dtype)
+                self.linear = self.linear.to(input_dtype)
+        
         #print('query, key, value', query.shape, value.shape, key.shape)
         q = self.q(query).reshape(B, N,
                                   self.num_heads, C // self.num_heads).permute(
@@ -256,7 +317,6 @@ class Block(nn.Module):
                                                 proj_drop=drop)
             self.norm3 = norm_layer(dim)
 
-    @force_fp32(apply_to=('query', 'key', 'value'))
     def forward(self, query, key, value, key_padding_mask=None, hw_lvl=None):
         if self.self_attn:
             query = query + self.drop_path(self.self_attention(query))

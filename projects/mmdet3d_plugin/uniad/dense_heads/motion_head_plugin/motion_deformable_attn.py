@@ -18,6 +18,7 @@ from mmcv.cnn.bricks.transformer import build_attention, build_feedforward_netwo
 from mmcv.cnn.bricks.drop import build_dropout
 from mmcv.runner.base_module import BaseModule, ModuleList, Sequential
 from mmcv.utils import ConfigDict, deprecated_api_warning
+from projects.mmdet3d_plugin.uniad.modules.flash_attn_wrapper import FlashMultiheadAttention
 from projects.mmdet3d_plugin.uniad.modules.multi_scale_deformable_attn_function import MultiScaleDeformableAttnFunction_fp32
 
 
@@ -528,7 +529,7 @@ class CustomModeMultiheadAttention(BaseModule):
         self.embed_dims = embed_dims
         self.num_heads = num_heads
 
-        self.attn = nn.MultiheadAttention(embed_dims, num_heads, attn_drop, **kwargs)
+        self.attn = FlashMultiheadAttention(embed_dims, num_heads, attn_drop, **kwargs)
 
         self.proj_drop = nn.Dropout(proj_drop)
         self.dropout_layer = build_dropout(

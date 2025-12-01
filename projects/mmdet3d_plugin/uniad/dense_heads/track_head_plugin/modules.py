@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from .track_instance import Instances
+from projects.mmdet3d_plugin.uniad.modules.flash_attn_wrapper import FlashMultiheadAttention
 
 # MemoryBank
 class MemoryBank(nn.Module):
@@ -23,7 +24,7 @@ class MemoryBank(nn.Module):
 
         self.save_proj = nn.Linear(dim_in, dim_in)
 
-        self.temporal_attn = nn.MultiheadAttention(dim_in, 8, dropout=0)
+        self.temporal_attn = FlashMultiheadAttention(dim_in, 8, dropout=0)
         self.temporal_fc1 = nn.Linear(dim_in, hidden_dim)
         self.temporal_fc2 = nn.Linear(hidden_dim, dim_in)
         self.temporal_norm1 = nn.LayerNorm(dim_in)
@@ -123,7 +124,7 @@ class QueryInteractionModule(QueryInteractionBase):
     def _build_layers(self, args, dim_in, hidden_dim, dim_out):
         dropout = args["merger_dropout"]
 
-        self.self_attn = nn.MultiheadAttention(dim_in, 8, dropout)
+        self.self_attn = FlashMultiheadAttention(dim_in, 8, dropout)
         self.linear1 = nn.Linear(dim_in, hidden_dim)
         self.dropout = nn.Dropout(dropout)
         self.linear2 = nn.Linear(hidden_dim, dim_in)

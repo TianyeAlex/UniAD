@@ -199,7 +199,7 @@ model = dict(
                     type="DetrTransformerDecoderLayer",
                     attn_cfgs=[
                         dict(
-                            type="MultiheadAttention",
+                            type="FlashMultiheadAttention",
                             embed_dims=_dim_,
                             num_heads=8,
                             dropout=0.1,
@@ -280,7 +280,7 @@ model = dict(
                     type='DetrTransformerDecoderLayer',
                     attn_cfgs=[
                         dict(
-                            type='MultiheadAttention',
+                            type='FlashMultiheadAttention',
                             embed_dims=_dim_,
                             num_heads=8,
                             dropout=0.1),
@@ -349,7 +349,7 @@ model = dict(
             transformerlayers=dict(
                 type='DetrTransformerDecoderLayer',
                 attn_cfgs=dict(
-                    type='MultiheadAttention',
+                    type='FlashMultiheadAttention',
                     embed_dims=256,
                     num_heads=8,
                     attn_drop=0.0,
