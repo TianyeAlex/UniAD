@@ -348,10 +348,18 @@ class UniADTrack(MVXTwoStageDetector):
         Args:
             img_feats: Pre-extracted features for current frame (optional)
             prev_img_feats: Pre-extracted features for previous frames (optional)
+            prev_bev: RNN-style cached BEV from previous frame (optional)
+        Note:
+            prev_bev and (prev_img, prev_img_metas) are mutually exclusive.
+            Use prev_bev for RNN-style caching (recommended).
+            Use prev_img for recursive history BEV generation (legacy).
         """
-        if prev_img is not None and prev_img_metas is not None:
-            assert prev_bev is None
+        # RNN-style: if prev_bev is provided, use it directly
+        # Recursive-style: if prev_img is provided, compute history BEV
+        if prev_bev is None and prev_img is not None and prev_img_metas is not None:
+            # Legacy recursive mode
             prev_bev = self.get_history_bev(prev_img, prev_img_metas, prev_img_feats=prev_img_feats)
+        # else: use provided prev_bev directly (RNN mode)
 
         # Use pre-extracted features if provided, otherwise extract on-the-fly
         if img_feats is None:
@@ -390,6 +398,7 @@ class UniADTrack(MVXTwoStageDetector):
         all_instances_pred_boxes=None,
         img_feats=None,  # Pre-extracted image features for current frame
         prev_img_feats=None,  # Pre-extracted image features for previous frames
+        prev_bev=None,  # RNN-style cached BEV from previous frame
     ):
         """
         Perform forward only on one frame. Called in  forward_train
@@ -398,15 +407,17 @@ class UniADTrack(MVXTwoStageDetector):
             img: shape [B, num_cam, 3, H, W]
             img_feats: Pre-extracted features for current frame (optional, for optimization)
             prev_img_feats: Pre-extracted features for previous frames (optional, for optimization)
+            prev_bev: Cached BEV from previous frame (RNN-style, for optimization)
             if l2g_r2 is None or l2g_t2 is None:
                 it means this frame is the end of the training clip,
                 so no need to call velocity update
         """
         # NOTE: You can replace BEVFormer with other BEV encoder and provide bev_embed here
+        # RNN-style: directly use prev_bev from previous frame, no recursive computation
         bev_embed, bev_pos = self.get_bevs(
             img, img_metas,
-            prev_img=prev_img, prev_img_metas=prev_img_metas,
-            img_feats=img_feats, prev_img_feats=prev_img_feats,
+            prev_bev=prev_bev,  # RNN mode: use cached BEV, ignore prev_img
+            img_feats=img_feats,
         )
         det_output = self.pts_bbox_head.get_detections(
             bev_embed,
@@ -561,11 +572,14 @@ class UniADTrack(MVXTwoStageDetector):
         self.criterion.initialize_for_single_clip(gt_instances_list)
 
         out = dict()
+        
+        # ========== OPTIMIZATION: RNN-style BEV caching ==========
+        # Cache BEV from previous frame to avoid recursive recomputation
+        prev_bev = None  # Start with no history for Frame 0
 
         for i in range(num_frame):
             prev_img = img[:, :i, ...] if i != 0 else img[:, :1, ...]
             prev_img_metas = copy.deepcopy(img_metas)
-            # TODO: Generate prev_bev in an RNN way.
 
             img_single = torch.stack([img_[i] for img_ in img], dim=0)
             img_metas_single = [copy.deepcopy(img_metas[0][i])]
@@ -574,11 +588,8 @@ class UniADTrack(MVXTwoStageDetector):
             # Squeeze time dimension: [B, 1, N, c, h, w] -> [B, N, c, h, w]
             img_feats_single = [feat[:, i] for feat in img_feats_all]  # Get features for frame i
             
-            # Extract previous frames features (0 to i-1) if needed
-            if i > 0:
-                prev_img_feats = [feat[:, :i] for feat in img_feats_all]  # Get features for frames 0 to i-1
-            else:
-                prev_img_feats = None
+            # No longer need prev_img_feats - using RNN-style prev_bev instead
+            prev_img_feats = None
             
             if i == num_frame - 1:
                 l2g_r2 = None
@@ -608,11 +619,16 @@ class UniADTrack(MVXTwoStageDetector):
                 all_instances_pred_logits,
                 all_instances_pred_boxes,
                 img_feats=img_feats_single,  # Pass pre-extracted features for current frame
-                prev_img_feats=prev_img_feats,  # Pass pre-extracted features for previous frames
+                prev_img_feats=prev_img_feats,  # Deprecated, kept for compatibility
+                prev_bev=prev_bev,  # RNN-style: pass cached BEV from previous frame
             )
             # all_query_embeddings: len=dec nums, N*256
             # all_matched_idxes: len=dec nums, N*2
             track_instances = frame_res["track_instances"]
+            
+            # ========== RNN-style BEV caching ==========
+            # Cache current BEV for next frame (detach to save memory)
+            prev_bev = frame_res["bev_embed"].detach()
         
         get_keys = ["bev_embed", "bev_pos",
                     "track_query_embeddings", "track_query_matched_idxes", "track_bbox_results",
