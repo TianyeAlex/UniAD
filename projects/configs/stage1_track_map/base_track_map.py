@@ -573,9 +573,9 @@ lr_config = dict(
     warmup_ratio=1.0 / 3,
     min_lr_ratio=1e-3,
 )
-total_epochs = 6
+total_epochs = 2
 evaluation = dict(
-    interval=6,
+    interval=2,
     pipeline=test_pipeline,
     planning_evaluation_strategy=planning_evaluation_strategy,
 )

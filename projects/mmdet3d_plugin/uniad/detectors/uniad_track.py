@@ -313,16 +313,24 @@ class UniADTrack(MVXTwoStageDetector):
         track_instances.save_period = copy.deepcopy(tgt_instances.save_period)
         return track_instances.to(device)
 
-    def get_history_bev(self, imgs_queue, img_metas_list):
+    def get_history_bev(self, imgs_queue, img_metas_list, prev_img_feats=None):
         """
         Get history BEV features iteratively. To save GPU memory, gradients are not calculated.
+        Args:
+            prev_img_feats: Pre-extracted features for all frames (optional)
         """
         self.eval()
         with torch.no_grad():
             prev_bev = None
             bs, len_queue, num_cams, C, H, W = imgs_queue.shape
-            imgs_queue = imgs_queue.reshape(bs * len_queue, num_cams, C, H, W)
-            img_feats_list = self.extract_img_feat(img=imgs_queue, len_queue=len_queue)
+            
+            # Use pre-extracted features if provided, otherwise extract on-the-fly
+            if prev_img_feats is None:
+                imgs_queue = imgs_queue.reshape(bs * len_queue, num_cams, C, H, W)
+                img_feats_list = self.extract_img_feat(img=imgs_queue, len_queue=len_queue)
+            else:
+                img_feats_list = prev_img_feats
+                
             for i in range(len_queue):
                 img_metas = [each[i] for each in img_metas_list]
                 img_feats = [each_scale[:, i] for each_scale in img_feats_list]
@@ -334,12 +342,21 @@ class UniADTrack(MVXTwoStageDetector):
         return prev_bev
 
     # Generate bev using bev_encoder in BEVFormer
-    def get_bevs(self, imgs, img_metas, prev_img=None, prev_img_metas=None, prev_bev=None):
+    def get_bevs(self, imgs, img_metas, prev_img=None, prev_img_metas=None, prev_bev=None,
+                 img_feats=None, prev_img_feats=None):
+        """
+        Args:
+            img_feats: Pre-extracted features for current frame (optional)
+            prev_img_feats: Pre-extracted features for previous frames (optional)
+        """
         if prev_img is not None and prev_img_metas is not None:
             assert prev_bev is None
-            prev_bev = self.get_history_bev(prev_img, prev_img_metas)
+            prev_bev = self.get_history_bev(prev_img, prev_img_metas, prev_img_feats=prev_img_feats)
 
-        img_feats = self.extract_img_feat(img=imgs)
+        # Use pre-extracted features if provided, otherwise extract on-the-fly
+        if img_feats is None:
+            img_feats = self.extract_img_feat(img=imgs)
+        
         if self.freeze_bev_encoder:
             with torch.no_grad():
                 bev_embed, bev_pos = self.pts_bbox_head.get_bev_features(
@@ -371,12 +388,16 @@ class UniADTrack(MVXTwoStageDetector):
         all_matched_indices=None,
         all_instances_pred_logits=None,
         all_instances_pred_boxes=None,
+        img_feats=None,  # Pre-extracted image features for current frame
+        prev_img_feats=None,  # Pre-extracted image features for previous frames
     ):
         """
         Perform forward only on one frame. Called in  forward_train
         Warnning: Only Support BS=1
         Args:
             img: shape [B, num_cam, 3, H, W]
+            img_feats: Pre-extracted features for current frame (optional, for optimization)
+            prev_img_feats: Pre-extracted features for previous frames (optional, for optimization)
             if l2g_r2 is None or l2g_t2 is None:
                 it means this frame is the end of the training clip,
                 so no need to call velocity update
@@ -385,6 +406,7 @@ class UniADTrack(MVXTwoStageDetector):
         bev_embed, bev_pos = self.get_bevs(
             img, img_metas,
             prev_img=prev_img, prev_img_metas=prev_img_metas,
+            img_feats=img_feats, prev_img_feats=prev_img_feats,
         )
         det_output = self.pts_bbox_head.get_detections(
             bev_embed,
@@ -509,6 +531,14 @@ class UniADTrack(MVXTwoStageDetector):
         """
         track_instances = self._generate_empty_tracks()
         num_frame = img.size(1)
+        
+        # ========== OPTIMIZATION: Pre-extract all image features once ==========
+        # This eliminates redundant feature extraction in get_history_bev()
+        B, L, N, C, H, W = img.size()
+        img_all = img.reshape(B * L, N, C, H, W)
+        img_feats_all = self.extract_img_feat(img=img_all, len_queue=L)
+        # img_feats_all: list of [B, L, N, C, H, W] for each scale
+        
         # init gt instances!
         gt_instances_list = []
 
@@ -539,6 +569,17 @@ class UniADTrack(MVXTwoStageDetector):
 
             img_single = torch.stack([img_[i] for img_ in img], dim=0)
             img_metas_single = [copy.deepcopy(img_metas[0][i])]
+            
+            # Extract current frame features from pre-extracted features
+            # Squeeze time dimension: [B, 1, N, c, h, w] -> [B, N, c, h, w]
+            img_feats_single = [feat[:, i] for feat in img_feats_all]  # Get features for frame i
+            
+            # Extract previous frames features (0 to i-1) if needed
+            if i > 0:
+                prev_img_feats = [feat[:, :i] for feat in img_feats_all]  # Get features for frames 0 to i-1
+            else:
+                prev_img_feats = None
+            
             if i == num_frame - 1:
                 l2g_r2 = None
                 l2g_t2 = None
@@ -566,6 +607,8 @@ class UniADTrack(MVXTwoStageDetector):
                 all_matched_idxes,
                 all_instances_pred_logits,
                 all_instances_pred_boxes,
+                img_feats=img_feats_single,  # Pass pre-extracted features for current frame
+                prev_img_feats=prev_img_feats,  # Pass pre-extracted features for previous frames
             )
             # all_query_embeddings: len=dec nums, N*256
             # all_matched_idxes: len=dec nums, N*2
