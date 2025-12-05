@@ -178,7 +178,7 @@ class PansegformerHead(SegDETRHead):
             for m in self.reg_branches:
                 nn.init.constant_(m[-1].bias.data[2:], 0.0)
 
-    @force_fp32(apply_to=('bev_embed', ))
+    @auto_fp16(apply_to=('bev_embed', ))
     def forward(self, bev_embed):
         """Forward function.
 
@@ -276,7 +276,7 @@ class PansegformerHead(SegDETRHead):
         
         return outs
 
-    @force_fp32(apply_to=('all_cls_scores_list', 'all_bbox_preds_list',
+    @auto_fp16(apply_to=('all_cls_scores_list', 'all_bbox_preds_list',
                           'args_tuple', 'reference'))
     def loss(
         self,
@@ -552,7 +552,8 @@ class PansegformerHead(SegDETRHead):
         num_bboxes = bbox_pred.size(0)
         # assigner and sampler
 
-        gt_masks = gt_masks.float()
+        # Convert to the same dtype as masks_preds_things (BF16/FP16/FP32)
+        gt_masks = gt_masks.to(masks_preds_things.dtype)
 
         assign_result = self.assigner_with_mask.assign(bbox_pred, cls_score,
                                                        masks_preds_things,
@@ -591,7 +592,8 @@ class PansegformerHead(SegDETRHead):
         pos_gt_masks = sampling_result.pos_gt_masks
         _, w, h = pos_gt_masks.shape
         mask_target = masks_preds_things.new_zeros([num_bboxes, w, h])
-        mask_target[pos_inds] = pos_gt_masks
+        # Convert pos_gt_masks to the same dtype as mask_target (for BF16 compatibility)
+        mask_target[pos_inds] = pos_gt_masks.to(mask_target.dtype)
 
         return (labels, label_weights, bbox_targets, bbox_weights, mask_target,
                 mask_weights, pos_inds, neg_inds)
@@ -849,7 +851,8 @@ class PansegformerHead(SegDETRHead):
 
         bboxes_gt = bbox_cxcywh_to_xyxy(bboxes_taget) * factors
 
-        mask_things_gt = torch.cat(mask_targets_list, 0).to(torch.float)
+        # Keep the original dtype (BF16/FP16/FP32) instead of forcing float32
+        mask_things_gt = torch.cat(mask_targets_list, 0)
 
         mask_weight_things = torch.cat(mask_weights_list,
                                        0).to(thing_labels.device)
@@ -883,7 +886,8 @@ class PansegformerHead(SegDETRHead):
         mask_weight_stuff = torch.cat(mask_weight_stuff,
                                       0).to(thing_labels.device)
         stuff_labels = torch.cat(stuff_labels, 0).to(thing_labels.device)
-        mask_stuff_gt = torch.cat(mask_stuff_gt, 0).to(torch.float)
+        # Keep bool type for mask_stuff_gt, will convert when needed
+        mask_stuff_gt = torch.cat(mask_stuff_gt, 0)
 
         num_total_pos_stuff = loss_cls.new_tensor([num_total_pos_stuff])
         num_total_pos_stuff = torch.clamp(reduce_mean(num_total_pos_stuff),
@@ -907,7 +911,8 @@ class PansegformerHead(SegDETRHead):
             mask_preds = F.interpolate(mask_preds_stuff.unsqueeze(0),
                                        scale_factor=2.0,
                                        mode='bilinear').squeeze(0)
-            mask_targets_stuff = F.interpolate(mask_stuff_gt.unsqueeze(0),
+            # Convert bool mask to the same dtype as mask_preds before interpolation
+            mask_targets_stuff = F.interpolate(mask_stuff_gt.to(mask_preds.dtype).unsqueeze(0),
                                                size=mask_preds.shape[-2:],
                                                mode='bilinear').squeeze(0)
 
@@ -1134,7 +1139,7 @@ class PansegformerHead(SegDETRHead):
 
         return bbox_index, det_bboxes, det_labels
 
-    @force_fp32(apply_to=('all_cls_scores_list', 'all_bbox_preds_list',
+    @auto_fp16(apply_to=('all_cls_scores_list', 'all_bbox_preds_list',
                           'args_tuple'))
     def get_bboxes(
         self,

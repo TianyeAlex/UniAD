@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from mmcv.cnn import Conv2d, Linear, build_activation_layer
 from mmcv.cnn.bricks.transformer import FFN, build_positional_encoding
-from mmcv.runner import force_fp32
+from mmcv.runner import force_fp32, auto_fp16
 
 from mmdet.core import (bbox_cxcywh_to_xyxy, bbox_xyxy_to_cxcywh,
                         build_assigner, build_sampler, multi_apply,
@@ -266,7 +266,7 @@ class SegDETRHead(
             self.reg_ffn(outs_dec))).sigmoid()
         return all_cls_scores, all_bbox_preds
 
-    @force_fp32(apply_to=('all_cls_scores_list', 'all_bbox_preds_list'))
+    @auto_fp16(apply_to=('all_cls_scores_list', 'all_bbox_preds_list'))
     def loss(self,
              all_cls_scores_list,
              all_bbox_preds_list,
@@ -585,7 +585,7 @@ class SegDETRHead(
         losses = self.loss(*loss_inputs, gt_bboxes_ignore=gt_bboxes_ignore)
         return losses
 
-    @force_fp32(apply_to=('all_cls_scores_list', 'all_bbox_preds_list'))
+    @auto_fp16(apply_to=('all_cls_scores_list', 'all_bbox_preds_list'))
     def get_bboxes(self,
                    all_cls_scores_list,
                    all_bbox_preds_list,

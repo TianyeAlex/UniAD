@@ -415,7 +415,7 @@ class BEVFormerTrackHead(DETRHead):
         loss_bbox = torch.nan_to_num(loss_bbox)
         return loss_cls, loss_bbox
 
-    @force_fp32(apply_to=('preds_dicts'))
+    @auto_fp16(apply_to=('preds_dicts'))
     def loss(self,
              gt_bboxes_list,
              gt_labels_list,
@@ -502,7 +502,7 @@ class BEVFormerTrackHead(DETRHead):
             num_dec_layer += 1
         return loss_dict
 
-    @force_fp32(apply_to=('preds_dicts'))
+    @auto_fp16(apply_to=('preds_dicts'))
     def get_bboxes(self, preds_dicts, img_metas, rescale=False):
         """Generate bboxes from bbox head predictions.
         Args:

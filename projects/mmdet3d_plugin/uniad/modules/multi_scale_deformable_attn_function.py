@@ -161,3 +161,56 @@ class MultiScaleDeformableAttnFunction_fp32(Function):
 
         return grad_value, None, None, \
             grad_sampling_loc, grad_attn_weight, None
+
+
+class MultiScaleDeformableAttnFunction_bf16(Function):
+    """BFloat16 version of multi-scale deformable attention.
+    
+    Unlike FP16 which needs gradient scaling, BF16 has the same dynamic range
+    as FP32, so we can use it directly without any special handling.
+    
+    Note: This version does NOT force type conversion with @custom_fwd.
+    The CUDA kernel supports BF16 natively, so we just pass through the tensors.
+    """
+
+    @staticmethod
+    def forward(ctx, value, value_spatial_shapes, value_level_start_index,
+                sampling_locations, attention_weights, im2col_step):
+        """GPU version of multi-scale deformable attention in BF16."""
+        ctx.im2col_step = im2col_step
+        output = ext_module.ms_deform_attn_forward(
+            value,
+            value_spatial_shapes,
+            value_level_start_index,
+            sampling_locations,
+            attention_weights,
+            im2col_step=ctx.im2col_step)
+        ctx.save_for_backward(value, value_spatial_shapes,
+                              value_level_start_index, sampling_locations,
+                              attention_weights)
+        return output
+
+    @staticmethod
+    @once_differentiable
+    def backward(ctx, grad_output):
+        """GPU version of backward function."""
+        value, value_spatial_shapes, value_level_start_index, \
+            sampling_locations, attention_weights = ctx.saved_tensors
+        grad_value = torch.zeros_like(value)
+        grad_sampling_loc = torch.zeros_like(sampling_locations)
+        grad_attn_weight = torch.zeros_like(attention_weights)
+
+        ext_module.ms_deform_attn_backward(
+            value,
+            value_spatial_shapes,
+            value_level_start_index,
+            sampling_locations,
+            attention_weights,
+            grad_output.contiguous(),
+            grad_value,
+            grad_sampling_loc,
+            grad_attn_weight,
+            im2col_step=ctx.im2col_step)
+
+        return grad_value, None, None, \
+            grad_sampling_loc, grad_attn_weight, None

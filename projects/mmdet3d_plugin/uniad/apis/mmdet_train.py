@@ -21,6 +21,7 @@ import os.path as osp
 from projects.mmdet3d_plugin.datasets.builder import build_dataloader
 from projects.mmdet3d_plugin.core.evaluation.eval_hooks import CustomDistEvalHook
 from projects.mmdet3d_plugin.datasets import custom_build_dataset
+from .bf16_optimizer_hook import Bf16OptimizerHook
 def custom_train_detector(model,
                    dataset,
                    cfg,
@@ -131,9 +132,10 @@ def custom_train_detector(model,
     # Set precision type globally in mmcv
     if bf16_cfg is not None:
         set_precision(torch.bfloat16)
-        logger.info('Using BFloat16 (BF16) precision training')
-        optimizer_config = Fp16OptimizerHook(
-            **cfg.optimizer_config, **bf16_cfg, distributed=distributed)
+        logger.info('Using BFloat16 (BF16) precision training with FP32 optimizer states')
+        # BF16 uses Bf16OptimizerHook: BF16 model + FP32 optimizer states (no GradScaler)
+        optimizer_config = Bf16OptimizerHook(
+            **cfg.optimizer_config, distributed=distributed)
     elif fp16_cfg is not None:
         set_precision(torch.float16)
         logger.info('Using Float16 (FP16) precision training')

@@ -7,7 +7,7 @@
 import torch
 import copy
 from mmdet.models import HEADS
-from mmcv.runner import force_fp32, auto_fp16
+from mmcv.runner import auto_fp16
 from projects.mmdet3d_plugin.models.utils.functional import (
     bivariate_gaussian_activation,
     norm_points,
@@ -379,7 +379,7 @@ class MotionHead(BaseMotionHead):
             batched_mode_query_pos.append(torch.stack(grouped_mode_query_pos))
         return torch.stack(batched_mode_query_pos)
 
-    @force_fp32(apply_to=('preds_dicts_motion'))
+    @auto_fp16(apply_to=('preds_dicts_motion'))
     def loss(self,
              gt_bboxes_3d,
              gt_fut_traj,
@@ -534,7 +534,7 @@ class MotionHead(BaseMotionHead):
             traj_prob_all, traj_preds_all, gt_fut_traj_all, gt_fut_traj_mask_all)
         return traj_loss, l_class, l_reg, l_minade, l_minfde, l_mr
 
-    @force_fp32(apply_to=('preds_dicts'))
+    @auto_fp16(apply_to=('preds_dicts'))
     def get_trajs(self, preds_dicts, bbox_results):
         """
         Generates trajectories from the prediction results, bounding box results.

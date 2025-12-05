@@ -1,4 +1,4 @@
-from mmcv.runner.fp16_utils import force_fp32
+from mmcv.runner.fp16_utils import force_fp32, auto_fp16
 from mmdet.models.utils.builder import TRANSFORMER
 from mmdet.models.utils import Transformer
 import warnings
@@ -221,7 +221,7 @@ class SegDeformableTransformer(Transformer):
                           dim=4).flatten(2)
         return pos
 
-    @force_fp32(apply_to=('mlvl_feats', 'query_embed', 'mlvl_pos_embeds'))
+    @auto_fp16(apply_to=('mlvl_feats', 'query_embed', 'mlvl_pos_embeds'))
     def forward(self,
                 mlvl_feats,
                 mlvl_masks,

@@ -10,7 +10,7 @@ from torch import nn, Tensor
 from functools import partial
 from mmdet.models.utils.builder import TRANSFORMER
 import math
-from mmcv.runner import force_fp32
+from mmcv.runner import auto_fp16
 
 try:
     from flash_attn import flash_attn_qkvpacked_func, flash_attn_func
@@ -40,7 +40,7 @@ class Mlp(nn.Module):
         self.fc2 = nn.Linear(hidden_features, out_features)
         self.drop = nn.Dropout(drop)
 
-    @force_fp32(apply_to=('x', ))
+    @auto_fp16(apply_to=('x', ))
     def forward(self, x):
         x = self.fc1(x)
         x = self.act(x)
@@ -361,7 +361,7 @@ class DropPath(nn.Module):
         super(DropPath, self).__init__()
         self.drop_prob = drop_prob
 
-    @force_fp32(apply_to=('x', ))
+    @auto_fp16(apply_to=('x', ))
     def forward(self, x):
         return drop_path(x, self.drop_prob, self.training)
 
@@ -427,7 +427,7 @@ class SegMaskHead(nn.Module):
         else:
             return tensor + pos
         #return tensor if pos is None else tensor + pos
-    @force_fp32(apply_to=('memory', 'mask_memory', 'pos_memory', 'query_embed',
+    @auto_fp16(apply_to=('memory', 'mask_memory', 'pos_memory', 'query_embed',
                           'mask_query', 'pos_query'))
     def forward(self, memory, mask_memory, pos_memory, query_embed, mask_query,
                 pos_query, hw_lvl):

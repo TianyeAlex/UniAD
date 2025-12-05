@@ -3,7 +3,8 @@ _base_ = ['./base_track_map.py']
 # Enable BF16 training
 # BF16 (bfloat16) has better numerical stability than FP16
 # and is supported on modern GPUs (A100, H100, etc.)
-bf16 = dict(loss_scale=512.)
+# Note: BF16 does NOT need loss_scale (unlike FP16)
+bf16 = dict()
 
-# Alternatively, for FP16:
+# For FP16 (needs gradient scaling):
 # fp16 = dict(loss_scale=512.)

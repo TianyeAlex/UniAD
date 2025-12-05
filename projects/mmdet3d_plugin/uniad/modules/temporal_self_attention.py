@@ -4,7 +4,8 @@
 #  Modified by Zhiqi Li
 # ---------------------------------------------
 
-from .multi_scale_deformable_attn_function import MultiScaleDeformableAttnFunction_fp32
+from .multi_scale_deformable_attn_function import MultiScaleDeformableAttnFunction_fp32, \
+    MultiScaleDeformableAttnFunction_fp16, MultiScaleDeformableAttnFunction_bf16
 from mmcv.ops.multi_scale_deform_attn import multi_scale_deformable_attn_pytorch
 import warnings
 import torch
@@ -235,12 +236,17 @@ class TemporalSelfAttention(BaseModule):
                 f'Last dim of reference_points must be'
                 f' 2 or 4, but get {reference_points.shape[-1]} instead.')
         if torch.cuda.is_available() and value.is_cuda:
-
-            # using fp16 deformable attention is unstable because it performs many sum operations
+            # Select appropriate precision for deformable attention
+            # Ensure all inputs have the same dtype as value
             if value.dtype == torch.float16:
+                MultiScaleDeformableAttnFunction = MultiScaleDeformableAttnFunction_fp16
+                attention_weights = attention_weights.half()
+            elif value.dtype == torch.bfloat16:
                 MultiScaleDeformableAttnFunction = MultiScaleDeformableAttnFunction_fp32
+                attention_weights = attention_weights.bfloat16()
             else:
                 MultiScaleDeformableAttnFunction = MultiScaleDeformableAttnFunction_fp32
+                attention_weights = attention_weights.float()
             output = MultiScaleDeformableAttnFunction.apply(
                 value, spatial_shapes, level_start_index, sampling_locations,
                 attention_weights, self.im2col_step)

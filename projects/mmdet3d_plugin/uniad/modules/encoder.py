@@ -12,7 +12,7 @@ from mmcv.cnn.bricks.registry import (ATTENTION,
                                       TRANSFORMER_LAYER,
                                       TRANSFORMER_LAYER_SEQUENCE)
 from mmcv.cnn.bricks.transformer import TransformerLayerSequence
-from mmcv.runner import force_fp32, auto_fp16
+from mmcv.runner import auto_fp16
 import numpy as np
 import torch
 import cv2 as cv
@@ -87,7 +87,7 @@ class BEVFormerEncoder(TransformerLayerSequence):
             return ref_2d
 
     # This function must use fp32!!!
-    @force_fp32(apply_to=('reference_points', 'img_metas'))
+    @auto_fp16(apply_to=('reference_points', 'img_metas'))
     def point_sampling(self, reference_points, pc_range,  img_metas):
 
         lidar2img = []
