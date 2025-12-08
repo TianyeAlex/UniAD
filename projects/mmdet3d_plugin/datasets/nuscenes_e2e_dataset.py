@@ -759,7 +759,7 @@ class NuScenesE2EDataset(NuScenesDataset):
             if 'map' in self.eval_mod:
                 map_annos = {}
                 for key, value in det['ret_iou'].items():
-                    map_annos[key] = float(value.numpy()[0])
+                    map_annos[key] = float(value.float().cpu().numpy()[0])
                     nusc_map_annos[sample_token] = map_annos
 
             if 'boxes_3d' not in det:
@@ -805,8 +805,8 @@ class NuScenesE2EDataset(NuScenesDataset):
                 box_ego = boxes_ego[keep_idx[i]]
                 trans = box_ego.center
                 if 'traj' in det:
-                    traj_local = det['traj'][keep_idx[i]].numpy()[..., :2]
-                    traj_scores = det['traj_scores'][keep_idx[i]].numpy()
+                    traj_local = det['traj'][keep_idx[i]].float().cpu().numpy()[..., :2]
+                    traj_scores = det['traj_scores'][keep_idx[i]].float().cpu().numpy()
                 else:
                     traj_local = np.zeros((0,))
                     traj_scores = np.zeros((0,))

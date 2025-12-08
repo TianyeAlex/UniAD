@@ -91,13 +91,13 @@ class Visualizer:
             scores = outputs[k]['scores_3d']
             labels = outputs[k]['labels_3d']
 
-            track_scores = scores.cpu().detach().numpy()
+            track_scores = scores.float().cpu().detach().numpy()
             track_labels = labels.cpu().detach().numpy()
-            track_boxes = bboxes.tensor.cpu().detach().numpy()
+            track_boxes = bboxes.tensor.float().cpu().detach().numpy()
 
-            track_centers = bboxes.gravity_center.cpu().detach().numpy()
-            track_dims = bboxes.dims.cpu().detach().numpy()
-            track_yaw = bboxes.yaw.cpu().detach().numpy()
+            track_centers = bboxes.gravity_center.float().cpu().detach().numpy()
+            track_dims = bboxes.dims.float().cpu().detach().numpy()
+            track_yaw = bboxes.yaw.float().cpu().detach().numpy()
 
             if 'track_ids' in outputs[k]:
                 track_ids = outputs[k]['track_ids'].cpu().detach().numpy()
@@ -105,18 +105,18 @@ class Visualizer:
                 track_ids = None
 
             # speed
-            track_velocity = bboxes.tensor.cpu().detach().numpy()[:, -2:]
+            track_velocity = bboxes.tensor.float().cpu().detach().numpy()[:, -2:]
 
             # trajectories
-            trajs = outputs[k][f'traj'].numpy()
-            traj_scores = outputs[k][f'traj_scores'].numpy()
+            trajs = outputs[k][f'traj'].float().cpu().numpy()
+            traj_scores = outputs[k][f'traj_scores'].float().cpu().numpy()
 
             predicted_agent_list = []
 
             # occflow
             if self.with_occ_map:
                 if 'topk_query_ins_segs' in outputs[k]['occ']:
-                    occ_map = outputs[k]['occ']['topk_query_ins_segs'][0].cpu(
+                    occ_map = outputs[k]['occ']['topk_query_ins_segs'][0].float().cpu(
                     ).numpy()
                 else:
                     occ_map = np.zeros((1, 5, 200, 200))
@@ -175,14 +175,14 @@ class Visualizer:
                 scores = outputs[k]['sdc_scores_3d']
                 labels = 0
 
-                track_scores = scores.cpu().detach().numpy()
+                track_scores = scores.float().cpu().detach().numpy()
                 track_labels = labels
-                track_boxes = bboxes.tensor.cpu().detach().numpy()
+                track_boxes = bboxes.tensor.float().cpu().detach().numpy()
 
-                track_centers = bboxes.gravity_center.cpu().detach().numpy()
-                track_dims = bboxes.dims.cpu().detach().numpy()
-                track_yaw = bboxes.yaw.cpu().detach().numpy()
-                track_velocity = bboxes.tensor.cpu().detach().numpy()[:, -2:]
+                track_centers = bboxes.gravity_center.float().cpu().detach().numpy()
+                track_dims = bboxes.dims.float().cpu().detach().numpy()
+                track_yaw = bboxes.yaw.float().cpu().detach().numpy()
+                track_velocity = bboxes.tensor.float().cpu().detach().numpy()[:, -2:]
 
                 if self.show_command:
                     command = outputs[k]['command'][0].cpu().detach().numpy()
@@ -195,7 +195,7 @@ class Visualizer:
                     track_dims[0],
                     track_yaw[0],
                     track_velocity[0],
-                    outputs[k]['planning_traj'][0].cpu().detach().numpy(),
+                    outputs[k]['planning_traj'][0].float().cpu().detach().numpy(),
                     1,
                     pred_track_id=-1,
                     pred_occ_map=None,

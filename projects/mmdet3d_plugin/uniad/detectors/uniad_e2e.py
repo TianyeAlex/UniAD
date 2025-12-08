@@ -233,6 +233,7 @@ class UniAD(UniADTrack):
         loss_dict = {f"{prefix}.{k}" : v*loss_factor for k, v in loss_dict.items()}
         return loss_dict
 
+    @auto_fp16(apply_to=('img', 'points'))
     def forward_test(self,
                      img=None,
                      img_metas=None,

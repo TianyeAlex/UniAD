@@ -16,16 +16,16 @@ def output_to_nusc_box(detection):
         list[:obj:`NuScenesBox`]: List of standard NuScenesBoxes.
     """
     box3d = detection['boxes_3d']
-    scores = detection['scores_3d'].numpy()
-    labels = detection['labels_3d'].numpy()
+    scores = detection['scores_3d'].float().cpu().numpy()
+    labels = detection['labels_3d'].cpu().numpy()
     if 'track_ids' in detection:
-        ids = detection['track_ids'].numpy()
+        ids = detection['track_ids'].cpu().numpy()
     else:
         ids = np.ones_like(labels)
 
-    box_gravity_center = box3d.gravity_center.numpy()
-    box_dims = box3d.dims.numpy()
-    box_yaw = box3d.yaw.numpy()
+    box_gravity_center = box3d.gravity_center.float().cpu().numpy()
+    box_dims = box3d.dims.float().cpu().numpy()
+    box_yaw = box3d.yaw.float().cpu().numpy()
     # NOTE: We converted bbox_yaw and bbox_dims to mmdet3d v1.0.0rc6 format.
 
     box_list = []
@@ -63,16 +63,16 @@ def output_to_nusc_box_det(detection):
     """
     if 'boxes_3d_det' in detection:
         box3d = detection['boxes_3d_det']
-        scores = detection['scores_3d_det'].numpy()
-        labels = detection['labels_3d_det'].numpy()
+        scores = detection['scores_3d_det'].float().cpu().numpy()
+        labels = detection['labels_3d_det'].cpu().numpy()
     else:
         box3d = detection['boxes_3d']
-        scores = detection['scores_3d'].numpy()
-        labels = detection['labels_3d'].numpy()
+        scores = detection['scores_3d'].float().cpu().numpy()
+        labels = detection['labels_3d'].cpu().numpy()
 
-    box_gravity_center = box3d.gravity_center.numpy()
-    box_dims = box3d.dims.numpy()
-    box_yaw = box3d.yaw.numpy()
+    box_gravity_center = box3d.gravity_center.float().cpu().numpy()
+    box_dims = box3d.dims.float().cpu().numpy()
+    box_yaw = box3d.yaw.float().cpu().numpy()
     # NOTE: We converted bbox_yaw and bbox_dims to mmdet3d v1.0.0rc6 format.
 
     box_list = []
