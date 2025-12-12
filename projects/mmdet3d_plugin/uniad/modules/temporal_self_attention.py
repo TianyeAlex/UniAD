@@ -5,7 +5,8 @@
 # ---------------------------------------------
 
 from .multi_scale_deformable_attn_function import MultiScaleDeformableAttnFunction_fp32, \
-    MultiScaleDeformableAttnFunction_fp16, MultiScaleDeformableAttnFunction_bf16
+    MultiScaleDeformableAttnFunction_fp16, MultiScaleDeformableAttnFunction_bf16, \
+    MultiScaleDeformableAttnFunction_opt, HAS_OPT_VERSION
 from mmcv.ops.multi_scale_deform_attn import multi_scale_deformable_attn_pytorch
 import warnings
 import torch
@@ -242,7 +243,7 @@ class TemporalSelfAttention(BaseModule):
                 MultiScaleDeformableAttnFunction = MultiScaleDeformableAttnFunction_fp16
                 attention_weights = attention_weights.half()
             elif value.dtype == torch.bfloat16:
-                MultiScaleDeformableAttnFunction = MultiScaleDeformableAttnFunction_fp32
+                MultiScaleDeformableAttnFunction = MultiScaleDeformableAttnFunction_opt
                 attention_weights = attention_weights.bfloat16()
             else:
                 MultiScaleDeformableAttnFunction = MultiScaleDeformableAttnFunction_fp32

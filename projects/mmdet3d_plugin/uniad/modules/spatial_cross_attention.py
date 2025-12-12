@@ -22,7 +22,8 @@ from mmcv.runner.base_module import BaseModule, ModuleList, Sequential
 
 from mmcv.utils import ext_loader
 from .multi_scale_deformable_attn_function import MultiScaleDeformableAttnFunction_fp32, \
-    MultiScaleDeformableAttnFunction_fp16, MultiScaleDeformableAttnFunction_bf16
+    MultiScaleDeformableAttnFunction_fp16, MultiScaleDeformableAttnFunction_bf16, \
+    MultiScaleDeformableAttnFunction_opt, HAS_OPT_VERSION
 ext_module = ext_loader.load_ext(
     '_ext', ['ms_deform_attn_backward', 'ms_deform_attn_forward'])
 
@@ -387,7 +388,7 @@ class MSDeformableAttention3D(BaseModule):
                 MultiScaleDeformableAttnFunction = MultiScaleDeformableAttnFunction_fp16
                 attention_weights = attention_weights.half()
             elif value.dtype == torch.bfloat16:
-                MultiScaleDeformableAttnFunction = MultiScaleDeformableAttnFunction_fp32
+                MultiScaleDeformableAttnFunction = MultiScaleDeformableAttnFunction_opt
                 attention_weights = attention_weights.bfloat16()
             else:
                 MultiScaleDeformableAttnFunction = MultiScaleDeformableAttnFunction_fp32
