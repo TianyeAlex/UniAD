@@ -10,14 +10,8 @@ from torch.autograd.function import Function, once_differentiable
 from mmcv.utils import ext_loader
 ext_module = ext_loader.load_ext(
     '_ext', ['ms_deform_attn_backward', 'ms_deform_attn_forward'])
-
-# Import optimized version
-try:
-    from mmcv.ops.multi_scale_deform_attn_opt import MultiScaleDeformableAttnFunctionOpt
-    HAS_OPT_VERSION = True
-except ImportError:
-    HAS_OPT_VERSION = False
-    print("Warning: Optimized deformable attention not available")
+ext_module_opt = ext_loader.load_ext(
+    '_ext_opt', ['ms_deform_attn_backward_opt', 'ms_deform_attn_forward_opt'])
 
 
 class MultiScaleDeformableAttnFunction_fp16(Function):
@@ -225,30 +219,44 @@ class MultiScaleDeformableAttnFunction_bf16(Function):
 
 
 class MultiScaleDeformableAttnFunction_opt(Function):
-    """Optimized version wrapper for multi-scale deformable attention.
+    """Optimized version of multi-scale deformable attention.
     
-    This class wraps the optimized implementation from mmcv.ops.multi_scale_deform_attn_opt
-    to provide the same interface as the standard versions.
+    This version calls the optimized kernels from mmcv compiled extension
+    which should provide better performance than the standard implementation.
     """
 
     @staticmethod
+    @custom_fwd(cast_inputs=torch.float32)
     def forward(ctx, value, value_spatial_shapes, value_level_start_index,
                 sampling_locations, attention_weights, im2col_step):
-        """Forward pass using optimized kernel."""
-        if not HAS_OPT_VERSION:
-            raise RuntimeError(
-                "Optimized deformable attention not available. "
-                "Please install mmcv with optimized ops.")
-        
+        """GPU version of multi-scale deformable attention using optimized kernel.
+
+        Args:
+            value (Tensor): The value has shape
+                (bs, num_keys, mum_heads, embed_dims//num_heads)
+            value_spatial_shapes (Tensor): Spatial shape of
+                each feature map, has shape (num_levels, 2),
+                last dimension 2 represent (h, w)
+            sampling_locations (Tensor): The location of sampling points,
+                has shape
+                (bs ,num_queries, num_heads, num_levels, num_points, 2),
+                the last dimension 2 represent (x, y).
+            attention_weights (Tensor): The weight of sampling points used
+                when calculate the attention, has shape
+                (bs ,num_queries, num_heads, num_levels, num_points),
+            im2col_step (Tensor): The step used in image to column.
+
+        Returns:
+            Tensor: has shape (bs, num_queries, embed_dims)
+        """
         ctx.im2col_step = im2col_step
-        # Use the optimized version's forward
-        output = MultiScaleDeformableAttnFunctionOpt.apply(
+        output = ext_module_opt.ms_deform_attn_forward_opt(
             value,
             value_spatial_shapes,
             value_level_start_index,
             sampling_locations,
             attention_weights,
-            im2col_step)
+            im2col_step=ctx.im2col_step)
         ctx.save_for_backward(value, value_spatial_shapes,
                               value_level_start_index, sampling_locations,
                               attention_weights)
@@ -257,14 +265,31 @@ class MultiScaleDeformableAttnFunction_opt(Function):
     @staticmethod
     @once_differentiable
     def backward(ctx, grad_output):
-        """Backward pass - delegates to optimized implementation."""
+        """GPU version of backward function using optimized kernel.
+
+        Args:
+            grad_output (Tensor): Gradient of output tensor of forward.
+
+        Returns:
+             Tuple[Tensor]: Gradient of input tensors in forward.
+        """
         value, value_spatial_shapes, value_level_start_index, \
             sampling_locations, attention_weights = ctx.saved_tensors
-        
         grad_value = torch.zeros_like(value)
         grad_sampling_loc = torch.zeros_like(sampling_locations)
         grad_attn_weight = torch.zeros_like(attention_weights)
-        
-        # The actual backward is handled by MultiScaleDeformableAttnFunctionOpt's autograd
+
+        ext_module_opt.ms_deform_attn_backward_opt(
+            value,
+            value_spatial_shapes,
+            value_level_start_index,
+            sampling_locations,
+            attention_weights,
+            grad_output.contiguous(),
+            grad_value,
+            grad_sampling_loc,
+            grad_attn_weight,
+            im2col_step=ctx.im2col_step)
+
         return grad_value, None, None, \
             grad_sampling_loc, grad_attn_weight, None
