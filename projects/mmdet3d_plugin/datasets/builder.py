@@ -80,12 +80,31 @@ def build_dataloader(dataset,
         worker_init_fn, num_workers=num_workers, rank=rank,
         seed=seed) if seed is not None else None
 
+    # Auto-select collate function based on samples_per_gpu
+    # When samples_per_gpu > 1, use custom uniad_collate_fn for proper batching
+    # Otherwise use default mmcv.collate for backward compatibility
+    custom_collate_fn = kwargs.pop('collate_fn', None)
+    if custom_collate_fn is not None:
+        # Explicit collate_fn provided (highest priority)
+        if isinstance(custom_collate_fn, str):
+            from mmcv.utils import import_modules_from_strings
+            custom_collate_fn = import_modules_from_strings(custom_collate_fn)
+        collate_fn = custom_collate_fn
+    elif samples_per_gpu > 1:
+        # Auto-use uniad_collate_fn for batch_size > 1
+        from projects.mmdet3d_plugin.datasets.collate import uniad_collate_fn
+        collate_fn = uniad_collate_fn
+        print(f'Auto-using uniad_collate_fn for samples_per_gpu={samples_per_gpu}')
+    else:
+        # Default mmcv.collate for batch_size = 1
+        collate_fn = partial(collate, samples_per_gpu=samples_per_gpu)
+
     data_loader = DataLoader(
         dataset,
         batch_size=batch_size,
         sampler=sampler,
         num_workers=num_workers,
-        collate_fn=partial(collate, samples_per_gpu=samples_per_gpu),
+        collate_fn=collate_fn,
         pin_memory=False,
         worker_init_fn=init_fn,
         **kwargs)

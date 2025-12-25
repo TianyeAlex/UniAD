@@ -10,7 +10,7 @@ from mmdet.models import DETECTORS
 import copy
 import os
 from ..dense_heads.seg_head_plugin import IOU
-from .uniad_track import UniADTrack
+from .uniad_track import UniADTrack, _move_gt_data_to_device
 from mmdet.models.builder import build_head
 
 @DETECTORS.register_module()
@@ -156,6 +156,76 @@ class UniAD(UniADTrack):
                 dict: Dictionary containing losses of different tasks, such as tracking, segmentation, motion prediction, occupancy prediction, and planning. Each key in the dictionary 
                     is prefixed with the corresponding task name, e.g., 'track', 'map', 'motion', 'occ', and 'planning'. The values are the calculated losses for each task.
         """
+        # Unwrap tuple wrappers added by collate_fn to prevent scatter flattening
+        if isinstance(gt_lane_labels, tuple):
+            gt_lane_labels = gt_lane_labels[0]
+        if isinstance(gt_lane_bboxes, tuple):
+            gt_lane_bboxes = gt_lane_bboxes[0]
+        if isinstance(gt_lane_masks, tuple):
+            gt_lane_masks = gt_lane_masks[0]
+        if isinstance(gt_fut_traj, tuple):
+            gt_fut_traj = gt_fut_traj[0]
+        if isinstance(gt_fut_traj_mask, tuple):
+            gt_fut_traj_mask = gt_fut_traj_mask[0]
+        if isinstance(gt_sdc_fut_traj, tuple):
+            gt_sdc_fut_traj = gt_sdc_fut_traj[0]
+        if isinstance(gt_sdc_fut_traj_mask, tuple):
+            gt_sdc_fut_traj_mask = gt_sdc_fut_traj_mask[0]
+        if isinstance(gt_segmentation, tuple):
+            gt_segmentation = gt_segmentation[0]
+        if isinstance(gt_instance, tuple):
+            gt_instance = gt_instance[0]
+        if isinstance(gt_occ_img_is_valid, tuple):
+            gt_occ_img_is_valid = gt_occ_img_is_valid[0]
+        if isinstance(sdc_planning, tuple):
+            sdc_planning = sdc_planning[0]
+        if isinstance(sdc_planning_mask, tuple):
+            sdc_planning_mask = sdc_planning_mask[0]
+        if isinstance(command, tuple):
+            command = command[0]
+        if isinstance(gt_future_boxes, tuple):
+            gt_future_boxes = gt_future_boxes[0]
+        
+        # Move all GT data to GPU in one centralized place
+        # This is required because DataContainer with cpu_only=True keeps data on CPU
+        # to prevent scatter from flattening our batch structure.
+        # We move to GPU here ONCE for all submodules (tracking, seg, motion, occ, planning).
+        device = img.device
+        
+        # Tracking GT data (will be passed to forward_track_train)
+        gt_bboxes_3d = _move_gt_data_to_device(gt_bboxes_3d, device)
+        gt_labels_3d = _move_gt_data_to_device(gt_labels_3d, device)
+        gt_inds = _move_gt_data_to_device(gt_inds, device)
+        gt_past_traj = _move_gt_data_to_device(gt_past_traj, device)
+        gt_past_traj_mask = _move_gt_data_to_device(gt_past_traj_mask, device)
+        gt_sdc_bbox = _move_gt_data_to_device(gt_sdc_bbox, device)
+        gt_sdc_label = _move_gt_data_to_device(gt_sdc_label, device)
+        l2g_t = _move_gt_data_to_device(l2g_t, device)
+        l2g_r_mat = _move_gt_data_to_device(l2g_r_mat, device)
+        timestamp = _move_gt_data_to_device(timestamp, device)
+        
+        # Segmentation GT data
+        gt_lane_labels = _move_gt_data_to_device(gt_lane_labels, device)
+        gt_lane_bboxes = _move_gt_data_to_device(gt_lane_bboxes, device)
+        gt_lane_masks = _move_gt_data_to_device(gt_lane_masks, device)
+        
+        # Motion GT data
+        gt_fut_traj = _move_gt_data_to_device(gt_fut_traj, device)
+        gt_fut_traj_mask = _move_gt_data_to_device(gt_fut_traj_mask, device)
+        gt_sdc_fut_traj = _move_gt_data_to_device(gt_sdc_fut_traj, device)
+        gt_sdc_fut_traj_mask = _move_gt_data_to_device(gt_sdc_fut_traj_mask, device)
+        
+        # Occupancy GT data
+        gt_segmentation = _move_gt_data_to_device(gt_segmentation, device)
+        gt_instance = _move_gt_data_to_device(gt_instance, device)
+        gt_occ_img_is_valid = _move_gt_data_to_device(gt_occ_img_is_valid, device)
+        
+        # Planning GT data
+        sdc_planning = _move_gt_data_to_device(sdc_planning, device)
+        sdc_planning_mask = _move_gt_data_to_device(sdc_planning_mask, device)
+        command = _move_gt_data_to_device(command, device)
+        gt_future_boxes = _move_gt_data_to_device(gt_future_boxes, device)
+        
         losses = dict()
         len_queue = img.size(1)
         
